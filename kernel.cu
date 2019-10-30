@@ -88,6 +88,74 @@ __global__ void find_all_roots(DevicePointer<uint32_t>::Raw labelmap) {
     labelmap[tid] = find_root(labelmap, tid);
 }
 
+__global__ void apply_threshold(DevicePointer<Pixel>::Raw in, uint16_t image_width, uint16_t threshold, DevicePointer<uint8_t>::Raw out) {
+    uint16_t x = blockDim.x * blockIdx.x + threadIdx.x;
+    uint16_t y = blockDim.y * blockIdx.y + threadIdx.y;
+
+    uint16_t r, g, b;
+    r = in[y * image_width + x].r;
+    g = in[y * image_width + x].g;
+    b = in[y * image_width + x].b;
+    r += in[(y - 1) * image_width + x].r;
+    g += in[(y - 1) * image_width + x].g;
+    b += in[(y - 1) * image_width + x].b;
+    r += in[(y + 1) * image_width + x].r;
+    g += in[(y + 1) * image_width + x].g;
+    b += in[(y + 1) * image_width + x].b;
+    r += in[y * image_width + x - 1].r;
+    g += in[y * image_width + x - 1].g;
+    b += in[y * image_width + x - 1].b;
+    r += in[(y - 1) * image_width + x - 1].r;
+    g += in[(y - 1) * image_width + x - 1].g;
+    b += in[(y - 1) * image_width + x - 1].b;
+    r += in[(y + 1) * image_width + x - 1].r;
+    g += in[(y + 1) * image_width + x - 1].g;
+    b += in[(y + 1) * image_width + x - 1].b;
+    r += in[y * image_width + x + 1].r;
+    g += in[y * image_width + x + 1].g;
+    b += in[y * image_width + x + 1].b;
+    r += in[(y - 1) * image_width + x + 1].r;
+    g += in[(y - 1) * image_width + x + 1].g;
+    b += in[(y - 1) * image_width + x + 1].b;
+    r += in[(y + 1) * image_width + x + 1].r;
+    g += in[(y + 1) * image_width + x + 1].g;
+    b += in[(y + 1) * image_width + x + 1].b;
+
+    threshold *= 9;
+    out[y * image_width + x] = !(r > threshold || g > threshold || b > threshold);
+}
+
+DevicePointer<Pixel> image_to_device(const Image& image) {
+    Pixel *pixels = new Pixel[image.width() * image.height()];
+    
+    size_t i = 0;
+    for (const Pixel& pix: image) {
+        pixels[i++] = pix;
+    }
+
+    DevicePointer<Pixel> vals(image.width() * image.height());
+    vals.copy_from_host(pixels);
+    return vals;
+}
+
+DevicePointer<uint8_t> threshold_image(const DevicePointer<Pixel>& image, uint16_t width, uint16_t height, uint8_t threshold) {
+    const uint8_t block_size = 32;
+    const uint16_t blocks_per_row = width > block_size ? width / block_size : 1;
+    const dim3 image_grid(blocks_per_row, blocks_per_row);
+    const dim3 image_block(block_size, block_size);
+
+    Timer timer;
+    DevicePointer<uint8_t> result(width * height);
+    timer.report("threshold setup");
+
+    timer.reset();
+    apply_threshold<<<image_grid, image_block>>>(image.as_raw(), width, threshold, result.as_raw());
+    finalise_kernel();
+    timer.report("threshold kernel");
+
+    return result;
+}
+
 HostPointer<uint32_t> label_components(const DevicePointer<uint8_t>& image, uint16_t width, uint16_t height) {
     const uint8_t block_size = 32;
     const uint16_t blocks_per_row = width > block_size ? width / block_size : 1;

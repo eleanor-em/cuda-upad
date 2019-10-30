@@ -1,6 +1,7 @@
 #ifndef __UPAD_IMAGE_H
 #define __UPAD_IMAGE_H
 #include <iostream>
+#include <cstring>
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image.h"
@@ -24,14 +25,20 @@ std::ostream& operator<<(std::ostream& os, const Pixel &p) {
 class Image {
     public:
         // Load the image buffer
-        Image(const char *fname):
-            fname(fname) {
+        Image(const char *fname)
+        : _new(false) {
+            int bpp;
             image = stbi_load(fname, &_width, &_height, &bpp, 3);
         }
 
-        Image(const Image& other) {
-            fname = other.fname;
-            image = stbi_load(other.fname, &_width, &_height, &bpp, 3);
+        Image(const Image& other)
+        : _new(true) {
+            _width = other._width;
+            _height = other._height;
+
+            const size_t size = _width * _height * 3;
+            image = new uint8_t[size];
+            memcpy(image, other.image, size);
         }
 
         // Returns true if the image was successfully loaded
@@ -78,7 +85,11 @@ class Image {
         }
 
         ~Image() {
-            stbi_image_free(image);
+            if (!_new) {
+                stbi_image_free(image);
+            } else {
+                delete[] image;
+            }
         }
 
         class Iterator {
@@ -129,10 +140,9 @@ class Image {
         }
     
     private:
-        const char *fname;
         uint8_t *image;
         int _width;
         int _height;
-        int bpp;
+        bool _new;
 };
 #endif // __UPAD_IMAGE_H
