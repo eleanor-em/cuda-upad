@@ -1,3 +1,5 @@
+#ifndef _UNIONFIND_CU
+#define _UNIONFIND_CU
 template <class T>
 __device__ __host__ void make_set(T *parent, T value) {
     parent[value] = value;
@@ -27,3 +29,4 @@ __device__ __host__ void merge(T *parent, T x, T y) {
         parent[x_root] = y_root;
     }
 }
+#endif // _UNIONFIND_CU
