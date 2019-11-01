@@ -2,6 +2,8 @@
 #define _KERNEL_CU
 
 #include <chrono>
+#include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 #include "memory.cu"
 #include "unionfind.cu"
 
@@ -135,20 +137,20 @@ DevicePointer<Pixel> image_to_device(const Image& image) {
 
     DevicePointer<Pixel> vals(image.width() * image.height());
     vals.copy_from_host(pixels);
+    delete[] pixels;
     return vals;
 }
 
 DevicePointer<uint8_t> threshold_image(const DevicePointer<Pixel>& image, uint16_t width, uint16_t height, uint8_t threshold) {
     const uint8_t block_size = 32;
     const uint16_t blocks_per_row = width > block_size ? width / block_size : 1;
-    const dim3 image_grid(blocks_per_row, blocks_per_row);
+    const uint16_t blocks_per_col = height > block_size ? height / block_size : 1;
+    const dim3 image_grid(blocks_per_row, blocks_per_col);
     const dim3 image_block(block_size, block_size);
 
-    Timer timer;
     DevicePointer<uint8_t> result(width * height);
-    timer.report("threshold setup");
 
-    timer.reset();
+    Timer timer;
     apply_threshold<<<image_grid, image_block>>>(image.as_raw(), width, threshold, result.as_raw());
     finalise_kernel();
     timer.report("threshold kernel");
@@ -156,12 +158,13 @@ DevicePointer<uint8_t> threshold_image(const DevicePointer<Pixel>& image, uint16
     return result;
 }
 
-HostPointer<uint32_t> label_components(const DevicePointer<uint8_t>& image, uint16_t width, uint16_t height) {
+DevicePointer<uint32_t> label_components(const DevicePointer<uint8_t>& image, uint16_t width, uint16_t height) {
     const uint8_t block_size = 32;
     const uint16_t blocks_per_row = width > block_size ? width / block_size : 1;
-    const dim3 image_grid(blocks_per_row, blocks_per_row);
+    const uint16_t blocks_per_col = height > block_size ? height / block_size : 1;
+    const dim3 image_grid(blocks_per_row, blocks_per_col);
     const dim3 image_block(block_size, block_size);
-    const dim3 seam_grid(blocks_per_row - 1, blocks_per_row);
+    const dim3 seam_grid(blocks_per_row - 1, blocks_per_col);
     const dim3 seam_block(block_size, block_size);
 
     DevicePointer<uint32_t> labelmap(width * height);
@@ -185,6 +188,6 @@ HostPointer<uint32_t> label_components(const DevicePointer<uint8_t>& image, uint
 
     total_timer.report("total");
 
-    return labelmap.as_host();
+    return labelmap;
 }
 #endif // _KERNEL_CU
